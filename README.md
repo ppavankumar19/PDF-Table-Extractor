@@ -1,13 +1,15 @@
-# PDF Table Extractor
+# TablePull — PDF Table Extractor
 
-Convert tabular data inside PDFs into an Excel workbook where every detected table gets its own sheet. Includes a bold, single-page UI with full Excel-style preview (all rows, highlight colors) and REST APIs.
+Convert tabular data inside PDFs into an Excel workbook where every detected table gets its own sheet. Includes a redesigned single-page UI with a guided 4-step flow, live workbook preview, and REST APIs.
 
 **Live deployment (Render):** https://pdf-table-extractor-3hfa.onrender.com/
 
 ## Features
-- Drag-and-drop upload at `/`; inline CSS/JS (no build step).
-- Full workbook preview before download: sheet tabs, sticky headers/row numbers, highlight-aware cells, and PDF preview side-by-side.
-- Immediate Excel download after preview; warns gracefully when no tables are found.
+- Drag-and-drop upload at `/`; inline CSS/JS (no build step) with dropzone, file pill, and thumbnail preview.
+- Guided 4-step UI: load PDF → analyze tables → review sheets → download Excel.
+- Workbook preview: sheet tabs, sticky headers/row numbers, highlight-aware cells, row search/filter, CSV copy, and fullscreen toggle.
+- Progress + status toasts; graceful warnings when no tables are found.
+- Immediate Excel download after preview, with preserved highlights and stable sheet naming.
 - API: `POST /extract` streams an `.xlsx` file immediately after parsing.
 - Preview API: `POST /analyze` returns JSON (table count, full rows, highlight colors) so the UI mirrors the exact workbook contents.
 - Sheet naming pattern `page-{page}-table-{n}` plus `X-Table-Count` header to report how many tables were found.
@@ -28,7 +30,7 @@ pip install -r requirements.txt
 .venv/bin/pytest            # optional: run regression test
 .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
-Open http://localhost:8000 for the drag-and-drop UI. The `/analyze` and `/extract` APIs are available on the same host.
+Open http://localhost:8000 for the TablePull UI. The `/analyze` and `/extract` APIs are available on the same host.
 
 ## Run the app (after setup)
 ```bash
@@ -36,7 +38,7 @@ cd pdf-table-extractor
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
-- UI: open http://localhost:8000 and drop a PDF.
+- UI: open http://localhost:8000 and drop a PDF (or click the dropzone), then hit "Analyze Tables" to see the workbook preview and enable download.
 - Preview JSON: `curl -X POST http://localhost:8000/analyze -F "file=@sample.pdf"`
 - Excel download: `curl -X POST http://localhost:8000/extract -F "file=@sample.pdf" -o tables.xlsx`
 - Stop the server: Ctrl+C (or `pkill -f "uvicorn app.main:app"` if running in the background).
