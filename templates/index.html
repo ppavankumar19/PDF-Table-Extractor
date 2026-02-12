@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF Table Extractor</title>
+    <style>
+        @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
+        :root {
+            --ink: #0b1221;
+            --muted: #4a5568;
+            --bg: #f3f5f9;
+            --panel: #ffffff;
+            --accent: #0ea676;
+            --accent-strong: #0a7a56;
+            --border: #e2e8f0;
+            --shadow: 0 16px 70px rgba(11, 18, 33, 0.14);
+            --grid-header: #0f172a;
+            --grid-header-text: #f8fafc;
+            font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background:
+                radial-gradient(circle at 18% 20%, rgba(14, 166, 118, 0.12), transparent 28%),
+                radial-gradient(circle at 82% 10%, rgba(12, 123, 189, 0.12), transparent 24%),
+                var(--bg);
+            color: var(--ink);
+        }
+
+        a { color: inherit; }
+
+        .page {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding: 32px 18px 64px;
+            display: grid;
+            gap: 22px;
+        }
+
+        .shell {
+            display: grid;
+            gap: 18px;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            align-items: stretch;
+        }
+
+        .panel, .hero {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 24px;
+            box-shadow: var(--shadow);
+        }
+
+        .hero {
+            background: linear-gradient(140deg, #0ea676 0%, #0a7a56 100%);
+            color: #f8fafc;
+            position: relative;
+            overflow: hidden;
+            min-height: 260px;
+        }
+
+        .hero::after {
+            content: "";
+            position: absolute;
+            inset: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 14px;
+        }
+
+        .eyebrow {
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 700;
+            font-size: 12px;
+            margin: 0 0 8px;
+            opacity: 0.9;
+        }
+
+        .hero h1 {
+            margin: 0 0 10px;
+            font-size: 28px;
+            line-height: 1.2;
+        }
+
+        .hero .lede {
+            margin: 0 0 14px;
+            line-height: 1.5;
+            opacity: 0.92;
+        }
+
+        .benefits {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            gap: 6px;
+        }
+
+        .benefits li {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.12);
+            padding: 8px 10px;
+            border-radius: 10px;
+            font-weight: 600;
+            width: fit-content;
+        }
+
+        .benefits .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #bbf7d0;
+            box-shadow: 0 0 0 4px rgba(187, 247, 208, 0.2);
+        }
+
+        .panel-title {
+            margin: 0 0 8px;
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .muted { color: var(--muted); }
+        .small { font-size: 14px; }
+
+        .upload-form {
+            display: grid;
+            gap: 12px;
+        }
+
+        .dropzone {
+            border: 1.5px dashed var(--border);
+            border-radius: 14px;
+            padding: 18px;
+            background: #f8fafc;
+            color: var(--muted);
+            display: grid;
+            gap: 8px;
+            cursor: pointer;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+        }
+
+        .dropzone:hover, .dropzone.dragging {
+            border-color: var(--accent);
+            box-shadow: 0 10px 26px rgba(14, 166, 118, 0.18);
+            transform: translateY(-1px);
+        }
+
+        .dropzone strong { color: var(--ink); }
+
+        .dropzone input[type="file"] { display: none; }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        button[type="submit"] {
+            border: none;
+            border-radius: 12px;
+            padding: 14px 16px;
+            background: linear-gradient(120deg, var(--accent), var(--accent-strong));
+            color: white;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.2s ease;
+            box-shadow: 0 10px 25px rgba(14, 166, 118, 0.32);
+            min-width: 180px;
+        }
+
+        button[type="submit"]:hover { transform: translateY(-1px); }
+        button[type="submit"]:active { transform: translateY(0); }
+        button[type="submit"]:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .status-chip {
+            padding: 10px 12px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 14px;
+            background: #eef2f7;
+            color: var(--muted);
+        }
+
+        .status-chip.ok { color: #0ea676; background: #e0f6ec; }
+        .status-chip.warn { color: #d97706; background: #fef3c7; }
+        .status-chip.error { color: #dc2626; background: #fee2e2; }
+
+        .mini-preview {
+            display: grid;
+            gap: 8px;
+        }
+
+        .pdf-frame {
+            width: 100%;
+            height: 260px;
+            border: 1px dashed var(--border);
+            border-radius: 12px;
+            background: white;
+            display: none;
+        }
+
+        .preview-panel {
+            background: var(--panel);
+            border-radius: 18px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            padding: 20px;
+        }
+
+        .panel-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+
+        .badge {
+            padding: 8px 12px;
+            border-radius: 20px;
+            background: #e2e8f0;
+            color: var(--ink);
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 12px 0;
+        }
+
+        .tab {
+            border: 1px solid var(--border);
+            background: #f8fafc;
+            padding: 8px 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.15s ease;
+        }
+
+        .tab.active {
+            background: #0ea676;
+            color: #f8fafc;
+            border-color: #0ea676;
+            box-shadow: 0 10px 24px rgba(14, 166, 118, 0.24);
+        }
+
+        .table-meta {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+            color: var(--muted);
+        }
+
+        .pill {
+            padding: 6px 10px;
+            border-radius: 10px;
+            background: #edf2f7;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .table-preview {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: #fdfefe;
+            min-height: 240px;
+            padding: 0;
+        }
+
+        .table-wrapper {
+            overflow: auto;
+            max-height: 540px;
+        }
+
+        table.grid {
+            width: max(100%, 720px);
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        table.grid th,
+        table.grid td {
+            border: 1px solid #e5e7eb;
+            padding: 6px 8px;
+            background: white;
+            max-width: 320px;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        table.grid thead th {
+            position: sticky;
+            top: 0;
+            background: var(--grid-header);
+            color: var(--grid-header-text);
+            z-index: 2;
+            font-weight: 700;
+        }
+
+        table.grid th.row-index {
+            position: sticky;
+            left: 0;
+            background: #f1f5f9;
+            z-index: 3;
+            width: 56px;
+            font-weight: 700;
+        }
+
+        table.grid tbody th.row-index {
+            top: auto;
+        }
+
+        .empty {
+            padding: 18px;
+            color: var(--muted);
+        }
+
+        .legend {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            color: var(--muted);
+        }
+
+        .swatch {
+            width: 14px;
+            height: 14px;
+            border-radius: 4px;
+            border: 1px solid #cbd5e1;
+        }
+
+        @media (max-width: 720px) {
+            .hero { min-height: auto; }
+            .controls { flex-direction: column; align-items: stretch; }
+            button[type="submit"] { width: 100%; }
+            .pdf-frame { height: 220px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="page">
+        <section class="shell">
+            <article class="hero">
+                <p class="eyebrow">PDF → Excel</p>
+                <h1>Extract tables with highlight colors intact.</h1>
+                <p class="lede">Get a full workbook preview before downloading, including every row and shaded cell.</p>
+                <ul class="benefits">
+                    <li><span class="dot"></span>Complete sheet previews</li>
+                    <li><span class="dot"></span>Highlight-aware cells</li>
+                    <li><span class="dot"></span>One-click Excel download</li>
+                </ul>
+            </article>
+
+            <section class="panel upload-panel">
+                <p class="panel-title">Upload your PDF</p>
+                <p class="muted small">Drop a PDF that contains tables. We will analyze, preview every sheet, and hand you an Excel file.</p>
+                <form class="upload-form" action="/extract" method="post" enctype="multipart/form-data">
+                    <label for="file" class="dropzone" id="dropzone">
+                        <div>
+                            <strong id="file-hint">Choose a PDF file or drop it here</strong>
+                            <div class="muted small">We keep your data in-browser; nothing is stored.</div>
+                        </div>
+                        <input id="file" name="file" type="file" accept="application/pdf" required />
+                    </label>
+                    <div class="mini-preview">
+                        <embed id="pdf-preview" type="application/pdf" class="pdf-frame" />
+                    </div>
+                    <div class="controls">
+                        <button type="submit">Analyze & Download</button>
+                        <span id="status" class="status-chip">Waiting for a PDF</span>
+                    </div>
+                    <p class="muted small">Line-based detection works best on born-digital PDFs; scanned PDFs may need OCR first.</p>
+                </form>
+            </section>
+        </section>
+
+        <section class="preview-panel">
+            <div class="panel-head">
+                <div>
+                    <p class="eyebrow">Workbook Preview</p>
+                    <h2 style="margin: 0;">Excel-style view of every sheet</h2>
+                    <p class="muted small" style="margin: 4px 0 0;">All rows rendered exactly as they will appear in the download.</p>
+                </div>
+                <div id="table-count" class="badge">No tables detected</div>
+            </div>
+
+            <div id="sheet-tabs" class="tabs"></div>
+            <div id="table-meta" class="table-meta"></div>
+            <div class="legend">
+                <span class="pill">Highlights copied to Excel</span>
+                <span class="pill">Row numbers pinned</span>
+            </div>
+            <div id="table-preview" class="table-preview">
+                <div class="empty">Upload a PDF to see the workbook preview.</div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const fileInput = document.getElementById("file");
+        const hint = document.getElementById("file-hint");
+        const pdfPreview = document.getElementById("pdf-preview");
+        const tablePreview = document.getElementById("table-preview");
+        const statusEl = document.getElementById("status");
+        const form = document.querySelector("form.upload-form");
+        const submitButton = form.querySelector("button");
+        const tableCount = document.getElementById("table-count");
+        const sheetTabs = document.getElementById("sheet-tabs");
+        const tableMeta = document.getElementById("table-meta");
+        const dropzone = document.getElementById("dropzone");
+
+        let tablesState = [];
+        let activeIdx = 0;
+
+        function setStatus(text, tone = "ok") {
+            statusEl.textContent = text;
+            statusEl.className = `status-chip ${tone}`;
+        }
+
+        function resetPreview() {
+            tablesState = [];
+            activeIdx = 0;
+            sheetTabs.innerHTML = "";
+            tableMeta.innerHTML = "";
+            tablePreview.innerHTML = '<div class="empty">Upload a PDF to see the workbook preview.</div>';
+            tableCount.textContent = "No tables detected";
+        }
+
+        function updatePdfPreview() {
+            const name = fileInput.files[0]?.name;
+            hint.textContent = name ? name : "Choose a PDF file or drop it here";
+            if (fileInput.files[0]) {
+                const url = URL.createObjectURL(fileInput.files[0]);
+                pdfPreview.src = url;
+                pdfPreview.style.display = "block";
+            } else {
+                pdfPreview.removeAttribute("src");
+                pdfPreview.style.display = "none";
+            }
+        }
+
+        fileInput.addEventListener("change", updatePdfPreview);
+
+        ["dragover", "dragenter"].forEach((eventName) => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropzone.classList.add("dragging");
+            });
+        });
+
+        ["dragleave", "drop"].forEach((eventName) => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropzone.classList.remove("dragging");
+            });
+        });
+
+        dropzone.addEventListener("drop", (e) => {
+            const file = e.dataTransfer?.files?.[0];
+            if (!file) return;
+            if (file.type !== "application/pdf") {
+                setStatus("Please drop a PDF file.", "warn");
+                return;
+            }
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            fileInput.files = dt.files;
+            updatePdfPreview();
+        });
+
+        function setLoading(isLoading, label = "Analyze & Download") {
+            submitButton.disabled = isLoading;
+            submitButton.textContent = isLoading ? label : "Analyze & Download";
+        }
+
+        function renderTabs() {
+            sheetTabs.innerHTML = "";
+            tablesState.forEach((table, idx) => {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = `tab ${idx === activeIdx ? "active" : ""}`;
+                btn.textContent = table.title || `Sheet ${idx + 1}`;
+                btn.addEventListener("click", () => {
+                    activeIdx = idx;
+                    renderTabs();
+                    renderActiveTable();
+                });
+                sheetTabs.appendChild(btn);
+            });
+        }
+
+        function renderActiveTable() {
+            tablePreview.innerHTML = "";
+            if (!tablesState.length) {
+                tablePreview.innerHTML = '<div class="empty">No tables detected.</div>';
+                return;
+            }
+
+            const table = tablesState[activeIdx];
+            const colCount = table.rows.reduce((max, r) => Math.max(max, r.length), 0);
+
+            const meta = [
+                `${table.rows.length} rows`,
+                `${colCount} cols`,
+                `Sheet ${activeIdx + 1} of ${tablesState.length}`,
+            ];
+            tableMeta.innerHTML = meta.map((m) => `<span class="pill">${m}</span>`).join("");
+
+            const wrapper = document.createElement("div");
+            wrapper.className = "table-wrapper";
+
+            const tbl = document.createElement("table");
+            tbl.className = "grid";
+
+            const thead = document.createElement("thead");
+            const headerRow = document.createElement("tr");
+            const rowHeader = document.createElement("th");
+            rowHeader.className = "row-index";
+            rowHeader.textContent = "#";
+            headerRow.appendChild(rowHeader);
+            for (let c = 0; c < colCount; c++) {
+                const th = document.createElement("th");
+                th.textContent = `C${c + 1}`;
+                headerRow.appendChild(th);
+            }
+            thead.appendChild(headerRow);
+            tbl.appendChild(thead);
+
+            const tbody = document.createElement("tbody");
+            table.rows.forEach((row, rIdx) => {
+                const tr = document.createElement("tr");
+                const rh = document.createElement("th");
+                rh.className = "row-index";
+                rh.textContent = rIdx + 1;
+                tr.appendChild(rh);
+                for (let c = 0; c < colCount; c++) {
+                    const td = document.createElement("td");
+                    const cell = row[c];
+                    td.textContent = cell ?? "";
+                    const color = table.highlights?.[rIdx]?.[c];
+                    if (color) {
+                        td.style.background = `#${color.slice(2)}`;
+                    }
+                    tr.appendChild(td);
+                }
+                tbody.appendChild(tr);
+            });
+            tbl.appendChild(tbody);
+
+            wrapper.appendChild(tbl);
+            tablePreview.appendChild(wrapper);
+        }
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            if (!fileInput.files.length) {
+                setStatus("Please choose a PDF first.", "warn");
+                return;
+            }
+
+            setLoading(true, "Analyzing...");
+            setStatus("Analyzing tables...", "ok");
+
+            const formData = new FormData(form);
+
+            try {
+                const analyzeResp = await fetch("/analyze", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                if (!analyzeResp.ok) {
+                    const errText = await analyzeResp.text();
+                    throw new Error(errText || "Analyze request failed.");
+                }
+
+                const result = await analyzeResp.json();
+
+                if (result.table_count === 0) {
+                    resetPreview();
+                    setStatus("No tables found in this PDF.", "warn");
+                    setLoading(false);
+                    return;
+                }
+
+                tablesState = result.tables || [];
+                activeIdx = 0;
+                tableCount.textContent = `${result.table_count} table${result.table_count > 1 ? "s" : ""} detected`;
+                renderTabs();
+                renderActiveTable();
+                setStatus("Tables detected. Preparing Excel...", "ok");
+
+                // fresh FormData for the download request
+                const downloadData = new FormData(form);
+                const dlResp = await fetch("/extract", {
+                    method: "POST",
+                    body: downloadData,
+                });
+
+                if (!dlResp.ok) {
+                    const errText = await dlResp.text();
+                    throw new Error(errText || "Download failed.");
+                }
+
+                const blob = await dlResp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                const filename =
+                    fileInput.files[0]?.name?.replace(/\\.pdf$/i, "") || "tables";
+                a.href = url;
+                a.download = `${filename}-tables.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+                setStatus("Excel downloaded with highlights.", "ok");
+                setLoading(false);
+            } catch (error) {
+                console.error(error);
+                setStatus(error.message || "Something went wrong.", "error");
+                setLoading(false, "Analyze & Download");
+            }
+        });
+    </script>
+</body>
+</html>
