@@ -2,6 +2,8 @@
 
 Convert tabular data inside PDFs into an Excel workbook where every detected table gets its own sheet. Includes a bold, single-page UI with full Excel-style preview (all rows, highlight colors) and REST APIs.
 
+**Live deployment (Render):** https://pdf-table-extractor-3hfa.onrender.com/
+
 ## Features
 - Drag-and-drop upload at `/`; inline CSS/JS (no build step).
 - Full workbook preview before download: sheet tabs, sticky headers/row numbers, highlight-aware cells, and PDF preview side-by-side.
