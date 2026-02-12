@@ -28,6 +28,17 @@ pip install -r requirements.txt
 ```
 Open http://localhost:8000 for the drag-and-drop UI. The `/analyze` and `/extract` APIs are available on the same host.
 
+## Run the app (after setup)
+```bash
+cd pdf-table-extractor
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+.venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+- UI: open http://localhost:8000 and drop a PDF.
+- Preview JSON: `curl -X POST http://localhost:8000/analyze -F "file=@sample.pdf"`
+- Excel download: `curl -X POST http://localhost:8000/extract -F "file=@sample.pdf" -o tables.xlsx`
+- Stop the server: Ctrl+C (or `pkill -f "uvicorn app.main:app"` if running in the background).
+
 ## Installation & local run
 ```bash
 git clone <your-repo-url> pdf-table-extractor
