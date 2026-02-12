@@ -16,6 +16,18 @@ Convert tabular data inside PDFs into an Excel workbook where every detected tab
 - Python 3.10+ (3.8+ should also work) and `pip`
 - Dependencies listed in `requirements.txt`
 
+## Quickstart (copy/paste)
+```bash
+git clone <your-repo-url> pdf-table-extractor
+cd pdf-table-extractor
+python3 -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+.venv/bin/pytest            # optional: run regression test
+.venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+Open http://localhost:8000 for the drag-and-drop UI. The `/analyze` and `/extract` APIs are available on the same host.
+
 ## Installation & local run
 ```bash
 git clone <your-repo-url> pdf-table-extractor
@@ -46,6 +58,13 @@ Response headers:
 - `X-Table-Count`: number of tables detected across all pages
 
 The body is an Excel workbook (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`).
+
+Preview-only example:
+```bash
+curl -X POST http://localhost:8000/analyze \
+  -F "file=@sample.pdf" | jq .
+```
+Returns JSON with `table_count`, full `rows`, and per-cell ARGB `highlights` so you can mirror the Excel output in your own UI.
 
 ## How it works
 - Table detection uses `pdfplumber` line-based extraction with `DEFAULT_TABLE_SETTINGS` defined in `app/main.py`.
