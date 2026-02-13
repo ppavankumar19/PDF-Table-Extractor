@@ -1,20 +1,26 @@
 # TablePull — PDF Table Extractor
 
-Convert tabular data inside PDFs into an Excel workbook where every detected table gets its own sheet. Includes a redesigned single-page UI with a guided 4-step flow, live workbook preview, and REST APIs.
+Convert tabular data inside PDFs into an Excel workbook where every detected table gets its own sheet. The single-page UI now has a richer upload/preview experience with a 4-step flow, inline PDF preview, and built-in keyboard shortcuts.
 
 **Live deployment (Render):** https://pdf-table-extractor-3hfa.onrender.com/
 
 ## Features
-- Drag-and-drop upload at `/`; inline CSS/JS (no build step) with dropzone, file pill, and thumbnail preview.
-- Guided 4-step UI: load PDF → analyze tables → review sheets → download Excel.
-- Workbook preview: sheet tabs, sticky headers/row numbers, highlight-aware cells, row search/filter, CSV copy, and fullscreen toggle.
-- Progress + status toasts; graceful warnings when no tables are found.
-- Immediate Excel download after preview, with preserved highlights and stable sheet naming.
+- Drag-and-drop upload at `/` with animated dropzone, file pill (name + size), inline PDF thumbnail/preview, and helper tip; 50 MB hint is shown in the UI.
+- Guided 4-step UI with top stepper, status bar, and progress bar: upload PDF → analyze tables → review sheets → download Excel.
+- Workbook preview: sheet tabs, sticky headers/row numbers, row/column counters, highlight-aware cells, search with hit highlighting, CSV copy, fullscreen toggle, plus keyboard shortcuts (`Ctrl/Cmd+K` focuses search, `Esc` exits fullscreen).
+- Progress + status toasts and graceful warnings when no tables are found.
+- Immediate Excel download after preview, auto-named `<pdf>-extracted.xlsx`, with preserved highlights and stable sheet naming.
 - API: `POST /extract` streams an `.xlsx` file immediately after parsing.
 - Preview API: `POST /analyze` returns JSON (table count, full rows, highlight colors) so the UI mirrors the exact workbook contents.
 - Sheet naming pattern `page-{page}-table-{n}` plus `X-Table-Count` header to report how many tables were found.
 - Graceful fallback sheet (`no-tables-found`) when a PDF contains no detectable tables.
 - Highlight carry-over: simple colored rectangles/highlight annotations in the PDF are mapped to background fills in the corresponding Excel cells when possible.
+
+## UI flow (`templates/index.html`)
+1) **Upload:** Drop or browse for a PDF (accepts `application/pdf`); the file row shows name + size, an inline PDF preview renders, and you can clear the selection with the × button.
+2) **Analyze:** Click “Analyze Tables” to call `/analyze`; the stepper, status bar, progress bar, and toasts track progress and validation (e.g., non‑PDF or empty results).
+3) **Preview:** Review extracted tables with sheet tabs, row/column counters, sticky headers, search (with highlighted matches), CSV copy, and fullscreen controls. Keyboard shortcuts: `Ctrl/Cmd+K` focuses search; `Esc` exits fullscreen.
+4) **Download:** The app requests `/extract`, then enables “Download Excel” with an auto-named workbook (`<pdf>-extracted.xlsx`). Toasts confirm success; files remain in memory only.
 
 ## Requirements
 - Python 3.10+ (3.8+ should also work) and `pip`
