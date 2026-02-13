@@ -2,11 +2,28 @@ from fastapi import FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from io import BytesIO
+import statistics
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import pdfplumber
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill
+from PIL import Image, ImageStat
+
+# Optional OCR dependency
+try:
+    import pytesseract
+    from pytesseract import Output as TesseractOutput, get_tesseract_version
+
+    _HAS_PYTESSERACT = True
+    try:
+        get_tesseract_version()
+        _HAS_TESSERACT = True
+    except Exception:
+        _HAS_TESSERACT = False
+except Exception:
+    _HAS_PYTESSERACT = False
+    _HAS_TESSERACT = False
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -200,6 +217,201 @@ def _map_highlights(table, page) -> List[List[Optional[str]]]:
     return highlights
 
 
+def _page_has_text(page) -> bool:
+    """Quickly determine if the PDF page already contains extractable text."""
+    try:
+        return bool(getattr(page, "chars", []) or getattr(page, "objects", {}).get("chars"))
+    except Exception:
+        return False
+
+
+def _to_page_image(page, resolution: int = 400) -> Optional[Image.Image]:
+    """Render a PDF page to a PIL image."""
+    try:
+        return page.to_image(resolution=resolution).original.convert("RGB")
+    except Exception:
+        return None
+
+
+def _pad_bbox(box: Dict[str, float], pad: int, max_width: int, max_height: int) -> Dict[str, int]:
+    """Pad a bounding box while keeping it inside the image."""
+    return {
+        "x0": max(0, int(box["x0"] - pad)),
+        "top": max(0, int(box["top"] - pad)),
+        "x1": min(max_width, int(box["x1"] + pad)),
+        "bottom": min(max_height, int(box["bottom"] + pad)),
+    }
+
+
+def _estimate_highlight_color(image: Image.Image, bbox: Dict[str, float]) -> Optional[str]:
+    """Estimate a highlight color by averaging pixels inside the bbox."""
+    if image is None:
+        return None
+
+    width, height = image.size
+    padded = _pad_bbox(bbox, pad=2, max_width=width, max_height=height)
+    region = image.crop((padded["x0"], padded["top"], padded["x1"], padded["bottom"]))
+    if region.size[0] == 0 or region.size[1] == 0:
+        return None
+
+    stat = ImageStat.Stat(region)
+    r, g, b = stat.mean[:3]
+    brightness = (r + g + b) / 3.0
+    maxc = max(r, g, b)
+    minc = min(r, g, b)
+    saturation = 0 if maxc == 0 else (maxc - minc) / maxc
+
+    # Treat moderately bright + colorful regions as highlights; ignore grayscale/white.
+    if saturation > 0.25 and brightness > 120:
+        return f"FF{int(r):02X}{int(g):02X}{int(b):02X}"
+    return None
+
+
+def _ocr_rows_and_highlights(image: Image.Image) -> Tuple[List[List[str]], List[List[Optional[str]]]]:
+    """Use Tesseract to recover rows/columns from a rendered page image."""
+    if not (_HAS_PYTESSERACT and _HAS_TESSERACT) or image is None:
+        return [], []
+
+    try:
+        data = pytesseract.image_to_data(
+            image, output_type=TesseractOutput.DICT, config="--psm 3"
+        )
+    except Exception:
+        return [], []
+
+    words = []
+    n = len(data.get("text", []))
+    for idx in range(n):
+        text = (data["text"][idx] or "").strip()
+        conf_raw = data.get("conf", ["-1"])[idx]
+        try:
+            conf = int(float(conf_raw))
+        except Exception:
+            conf = -1
+        if not text or conf < 40:  # skip low-confidence noise
+            continue
+
+        x0 = int(data["left"][idx])
+        y0 = int(data["top"][idx])
+        w = int(data["width"][idx])
+        h = int(data["height"][idx])
+
+        words.append(
+            {
+                "text": text,
+                "x0": x0,
+                "x1": x0 + w,
+                "top": y0,
+                "bottom": y0 + h,
+                "block": data.get("block_num", [0])[idx],
+                "par": data.get("par_num", [0])[idx],
+                "line": data.get("line_num", [0])[idx],
+            }
+        )
+
+    if not words:
+        return [], []
+
+    rows: List[List[str]] = []
+    highlights: List[List[Optional[str]]] = []
+
+    # Group words into rows by y-position tolerance.
+    median_height = statistics.median([w["bottom"] - w["top"] for w in words])
+    row_threshold = max(25, median_height * 0.8)
+    words_sorted = sorted(words, key=lambda w: w["top"])
+
+    current_row: List[Dict[str, object]] = []
+    current_top: Optional[float] = None
+
+    def _flush_row(row_words: List[Dict[str, object]]):
+        if not row_words:
+            return
+        row_words.sort(key=lambda w: w["x0"])
+        gaps = [
+            max(0, b["x0"] - a["x1"]) for a, b in zip(row_words, row_words[1:])
+        ]
+        median_gap = statistics.median(gaps) if gaps else 25
+        gap_threshold = max(18, min(120, median_gap * 0.8))
+
+        row_cells: List[str] = []
+        row_colors: List[Optional[str]] = []
+        cell_words: List[Dict[str, object]] = []
+        prev_x1: Optional[int] = None
+
+        for word in row_words:
+            if prev_x1 is not None and (word["x0"] - prev_x1) > gap_threshold:
+                cell_text = " ".join(w["text"] for w in cell_words).strip()
+                bbox = {
+                    "x0": min(w["x0"] for w in cell_words),
+                    "x1": max(w["x1"] for w in cell_words),
+                    "top": min(w["top"] for w in cell_words),
+                    "bottom": max(w["bottom"] for w in cell_words),
+                }
+                row_cells.append(cell_text)
+                row_colors.append(_estimate_highlight_color(image, bbox))
+                cell_words = []
+
+            cell_words.append(word)
+            prev_x1 = word["x1"]
+
+        if cell_words:
+            cell_text = " ".join(w["text"] for w in cell_words).strip()
+            bbox = {
+                "x0": min(w["x0"] for w in cell_words),
+                "x1": max(w["x1"] for w in cell_words),
+                "top": min(w["top"] for w in cell_words),
+                "bottom": max(w["bottom"] for w in cell_words),
+            }
+            row_cells.append(cell_text)
+            row_colors.append(_estimate_highlight_color(image, bbox))
+
+        rows.append(row_cells)
+        highlights.append(row_colors)
+
+    for word in words_sorted:
+        if current_top is None:
+            current_top = word["top"]
+        if word["top"] - current_top > row_threshold:
+            _flush_row(current_row)
+            current_row = [word]
+            current_top = word["top"]
+        else:
+            current_row.append(word)
+    _flush_row(current_row)
+
+    # Normalize column counts so downstream code can rely on rectangular data.
+    max_cols = max(len(r) for r in rows) if rows else 0
+    for idx, row in enumerate(rows):
+        pad_len = max_cols - len(row)
+        if pad_len > 0:
+            row.extend([""] * pad_len)
+            highlights[idx].extend([None] * pad_len)
+
+    return rows, highlights
+
+
+def _extract_tables_via_ocr(page, page_idx: int) -> List[Dict[str, object]]:
+    """Fallback: OCR a rendered page when no vector tables/text are present."""
+    if not (_HAS_PYTESSERACT and _HAS_TESSERACT):
+        return []
+
+    image = _to_page_image(page)
+    if image is None:
+        return []
+
+    rows, highlights = _ocr_rows_and_highlights(image)
+    if not rows:
+        return []
+
+    return [
+        {
+            "title": f"page-{page_idx}-ocr-1",
+            "rows": rows,
+            "highlights": highlights,
+        }
+    ]
+
+
 def parse_pdf_tables(
     pdf_bytes: bytes, table_settings: Optional[Dict[str, object]] = None
 ) -> List[Dict[str, object]]:
@@ -209,6 +421,14 @@ def parse_pdf_tables(
     with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
         for page_idx, page in enumerate(pdf.pages, start=1):
             tables = page.find_tables(table_settings=settings)
+
+            # OCR fallback for image-only or table-less pages.
+            if not tables and not _page_has_text(page):
+                ocr_tables = _extract_tables_via_ocr(page, page_idx)
+                if ocr_tables:
+                    results.extend(ocr_tables)
+                    continue
+
             for table_idx, table in enumerate(tables, start=1):
                 data = table.extract()
                 if not data:

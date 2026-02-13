@@ -10,6 +10,7 @@ Convert tabular data inside PDFs into an Excel workbook where every detected tab
 - Workbook preview: sheet tabs, sticky headers/row numbers, row/column counters, highlight-aware cells, search with hit highlighting, CSV copy, fullscreen toggle, plus keyboard shortcuts (`Ctrl/Cmd+K` focuses search, `Esc` exits fullscreen).
 - Progress + status toasts and graceful warnings when no tables are found.
 - Immediate Excel download after preview, auto-named `<pdf>-extracted.xlsx`, with preserved highlights and stable sheet naming.
+- OCR fallback for scanned/image-only tables when Tesseract is available (see **OCR setup**).
 - API: `POST /extract` streams an `.xlsx` file immediately after parsing.
 - Preview API: `POST /analyze` returns JSON (table count, full rows, highlight colors) so the UI mirrors the exact workbook contents.
 - Sheet naming pattern `page-{page}-table-{n}` plus `X-Table-Count` header to report how many tables were found.
@@ -25,6 +26,7 @@ Convert tabular data inside PDFs into an Excel workbook where every detected tab
 ## Requirements
 - Python 3.10+ (3.8+ should also work) and `pip`
 - Dependencies listed in `requirements.txt`
+- Tesseract binary for OCR fallback (e.g., `sudo apt-get install tesseract-ocr`) plus the `pytesseract`/`pillow` Python packages (already listed in `requirements.txt`).
 
 ## Quickstart (copy/paste)
 ```bash
@@ -61,6 +63,11 @@ pip install -r requirements.txt
 ```
 Then open http://localhost:8000 to use the upload form (the page is self-contained; no static files needed).
 
+### OCR setup (for scanned/image-only PDFs)
+- Install the Tesseract binary: macOS `brew install tesseract`, Debian/Ubuntu `sudo apt-get install tesseract-ocr`, Windows: install from https://github.com/UB-Mannheim/tesseract/wiki.
+- `pip install -r requirements.txt` already pulls `pytesseract` and `pillow`.
+- With Tesseract present, pages that contain only raster images (no extractable text/tables) are rendered to an image, OCR’d, and parsed into rows/columns. Colored regions are approximated into Excel fills when possible.
+
 ## API usage
 - **Endpoint:** `POST /extract` (download Excel)
 - **Preview endpoint:** `POST /analyze` (JSON with table_count, all rows, highlight colors)
@@ -87,8 +94,25 @@ curl -X POST http://localhost:8000/analyze \
 ```
 Returns JSON with `table_count`, full `rows`, and per-cell ARGB `highlights` so you can mirror the Excel output in your own UI.
 
+Sample `/analyze` response (truncated):
+```json
+{
+  "table_count": 1,
+  "tables": [
+    {
+      "title": "page-1-table-1",
+      "rows": [["Name", "Age"], ["Alice", "30"]],
+      "highlights": [[null, null], ["FFFFF2A8", null]]
+    }
+  ]
+}
+```
+- `rows` keeps the original table ordering; empty cells are returned as empty strings.
+- `highlights` is a row/column-aligned matrix; values are ARGB hex strings when a colored PDF rectangle or highlight overlaps the cell, otherwise `null`.
+
 ## How it works
 - Table detection uses `pdfplumber` line-based extraction with `DEFAULT_TABLE_SETTINGS` defined in `app/main.py`.
+- If a page has no vector tables *and* no extractable text, the page is rendered to an image (400 DPI) and OCR’d with Tesseract; rows/columns are reconstructed and highlight colors are estimated from pixel averages.
 - Each table is appended to an `openpyxl` workbook; sheets are created on the fly per table.
 - All processing happens in memory (no temp files written to disk) and is returned as a streaming response.
 
@@ -107,8 +131,13 @@ If you call `extract_tables_to_workbook(pdf_bytes, table_settings=...)` directly
 
 ## Testing
 ```bash
-.venv/bin/pytest
+.venv/bin/pytest           # OCR regression test auto-skips if Tesseract is missing
 ```
+
+## Troubleshooting
+- **`TesseractNotFoundError` or empty OCR results:** install the system Tesseract binary and ensure it is on your `PATH` (see *OCR setup* above). Restart the server after installing.
+- **Zero tables detected in PDFs with clear lines:** raise `snap_tolerance`/`join_tolerance` in `DEFAULT_TABLE_SETTINGS` or try OCR by installing Tesseract.
+- **Highlights missing:** only rectangles or highlight annotations are mapped; subtle colors may be filtered out if saturation/brightness is low. For scanned PDFs, highlight colors require the OCR path.
 
 ## Deployment notes
 - For production, prefer `uvicorn app.main:app --workers <n>` behind a reverse proxy (e.g., Nginx or Caddy).
@@ -117,5 +146,6 @@ If you call `extract_tables_to_workbook(pdf_bytes, table_settings=...)` directly
 
 ## Limitations
 - Works best on digital PDFs with clear line-drawn tables.
-- Image-only or poorly scanned PDFs will not yield tables without OCR.
+- OCR fallback requires the system Tesseract binary; without it, image-only PDFs still return `no-tables-found`.
+- OCR highlight detection is heuristic (mean color sampling) and may miss subtle highlights.
 - Processing is in-memory; very large PDFs may require streaming or chunked handling.
