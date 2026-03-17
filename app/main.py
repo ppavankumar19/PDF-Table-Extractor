@@ -1,4 +1,5 @@
 from fastapi import FastAPI, File, HTTPException, UploadFile, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from io import BytesIO
@@ -8,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import pdfplumber
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill
+from openpyxl.utils import get_column_letter
 from PIL import Image, ImageStat
 
 # Optional OCR dependency
@@ -29,7 +31,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 
 app = FastAPI(title="PDF Table Extractor")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition", "X-Table-Count"],
+)
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 ALLOWED_CONTENT_TYPES = {
     "application/pdf",
@@ -48,6 +59,8 @@ DEFAULT_TABLE_SETTINGS: Dict[str, object] = {
 def _ensure_pdf_bytes(pdf_bytes: bytes) -> None:
     if not pdf_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if not pdf_bytes.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="The file does not appear to be a valid PDF.")
 
 
 def _sanitize_filename(filename: Optional[str]) -> str:
@@ -470,6 +483,20 @@ def extract_tables_to_workbook(
                         worksheet.cell(row=r_idx + 1, column=c_idx + 1).fill = PatternFill(
                             start_color=color, end_color=color, fill_type="solid"
                         )
+
+            # Auto-fit column widths based on content length.
+            if rows:
+                num_cols = max(len(r) for r in rows)
+                for c_idx in range(1, num_cols + 1):
+                    max_len = max(
+                        (len(str(row[c_idx - 1])) if c_idx <= len(row) and row[c_idx - 1] else 0
+                         for row in rows),
+                        default=0,
+                    )
+                    worksheet.column_dimensions[get_column_letter(c_idx)].width = min(
+                        max(max_len + 2, 8), 60
+                    )
+
             sheet_count += 1
 
         if sheet_count == 0:
@@ -503,10 +530,13 @@ async def analyze_tables(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Please upload a PDF file.")
 
     pdf_bytes = await file.read()
+    if len(pdf_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds the 50 MB size limit.")
     _ensure_pdf_bytes(pdf_bytes)
     tables = parse_pdf_tables(pdf_bytes, table_settings=DEFAULT_TABLE_SETTINGS)
     response = {
         "table_count": len(tables),
+        "ocr_available": _HAS_TESSERACT,
         # Send full rows/highlights for a complete on-page preview.
         "tables": [
             {
@@ -526,6 +556,8 @@ async def extract_tables(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Please upload a PDF file.")
 
     pdf_bytes = await file.read()
+    if len(pdf_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds the 50 MB size limit.")
     _ensure_pdf_bytes(pdf_bytes)
 
     excel_stream, table_count = extract_tables_to_workbook(
