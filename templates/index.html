@@ -1152,7 +1152,7 @@
     </div>
     <span class="topbar-tag">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-      100% Client-Side Processing
+      Files Never Stored
     </span>
   </header>
 
@@ -1271,10 +1271,10 @@
       </div>
 
       <div class="prev-toolbar">
-        <div class="tabs-row" id="stabs"></div>
+        <div class="tabs-row" id="stabs" role="tablist" aria-label="Extracted table sheets"></div>
         <div class="search-wrap">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" class="search-in" id="srch" placeholder="Search in table..." autocomplete="off"/>
+          <input type="text" class="search-in" id="srch" placeholder="Search in table..." autocomplete="off" aria-label="Search in extracted table" />
         </div>
       </div>
 
@@ -1382,11 +1382,17 @@
   clr.addEventListener('click', clearFile);
   
   function onFile() {
-    const f=fi.files[0]; 
+    const f=fi.files[0];
     if(!f) return;
-    
+
+    if(f.size > 50 * 1024 * 1024) {
+      toast('File exceeds 50 MB. Please use a smaller PDF.', 'r');
+      fi.value = '';
+      return;
+    }
+
     const sizeMB = (f.size/1024/1024).toFixed(2);
-    
+
     dzT.textContent=f.name;
     fname.textContent=f.name;
     fsize.textContent=`${sizeMB} MB`;
@@ -1465,9 +1471,12 @@
   function renderTabs() {
     stabs.innerHTML='';
     tables.forEach((t,i)=>{
-      const b=document.createElement('button'); 
+      const b=document.createElement('button');
       b.type='button';
       b.className=`tab ${i===activeIdx?'active':''}`;
+      b.setAttribute('role','tab');
+      b.setAttribute('aria-selected', i===activeIdx ? 'true' : 'false');
+      b.setAttribute('aria-label', `${t.title||`Sheet ${i+1}`} – ${t.rows?.length??0} rows`);
       b.innerHTML=`${t.title||`Sheet ${i+1}`}<span class="tab-cnt">${t.rows?.length??0}</span>`;
       b.addEventListener('click',()=>{
         activeIdx=i;
@@ -1599,51 +1608,66 @@
     dlbtn.disabled=true;
     
     const fd=new FormData(form);
-    
+
+    async function parseError(resp) {
+      try {
+        const j = await resp.clone().json();
+        return j.detail || j.message || resp.statusText;
+      } catch(_) {
+        return (await resp.text()) || resp.statusText;
+      }
+    }
+
     try {
-      let p=20; 
+      let p=20;
       const tk=setInterval(()=>{
         p=Math.min(p+5,85);
         prog(p);
       },500);
-      
-      const r=await fetch('/analyze',{method:'POST',body:fd});
+
+      const ac1=new AbortController();
+      const t1=setTimeout(()=>ac1.abort(),90000);
+      const r=await fetch('/analyze',{method:'POST',body:fd,signal:ac1.signal});
+      clearTimeout(t1);
       clearInterval(tk);
-      
-      if(!r.ok) throw new Error((await r.text())||'Analysis failed.');
-      
+
+      if(!r.ok) throw new Error(await parseError(r));
+
       const res=await r.json();
       prog(100);
-      
+
       if(res.table_count===0){
-        st('No tables detected in this PDF.','warn'); 
-        toast('No tables found. Try a different PDF with structured data.','r');
-        prog(0,false); 
+        st('No tables detected in this PDF.','warn');
+        toast('No tables found. The PDF may have no line-drawn tables. Try enabling OCR for scanned PDFs.','r');
+        prog(0,false);
         return;
       }
-      
-      tables=res.tables||[]; 
+
+      tables=res.tables||[];
       activeIdx=0;
       const n=res.table_count;
-      
-      tcount.textContent=`${n} table${n>1?'s':''} found`; 
+
+      tcount.textContent=`${n} table${n>1?'s':''} found`;
       tcount.className='badge hi';
-      renderTabs(); 
+      renderTabs();
       renderTable();
-      
+
       st(`Successfully extracted ${n} table${n>1?'s':''} — preparing download…`,'ok');
-      toast(`🎉 Found ${n} table${n>1?'s':''}! Preparing Excel file…`,'g'); 
+      toast(`Found ${n} table${n>1?'s':''}! Preparing Excel file…`,'g');
       setStep(3);
-      csvb.style.display='grid'; 
+      csvb.style.display='grid';
       fsb.style.display='grid';
-      
+
       /* fetch xlsx */
       prog(85,true);
-      const fd2=new FormData(form), 
-            dr=await fetch('/extract',{method:'POST',body:fd2});
-      
-      if(!dr.ok) throw new Error((await dr.text())||'Excel generation failed.');
-      
+      const fd2=new FormData(form);
+      const ac2=new AbortController();
+      const t2=setTimeout(()=>ac2.abort(),150000);
+      const dr=await fetch('/extract',{method:'POST',body:fd2,signal:ac2.signal});
+      clearTimeout(t2);
+
+      if(!dr.ok) throw new Error(await parseError(dr));
+
       const blob=await dr.blob();
       blobUrl=URL.createObjectURL(blob);
       dlName=(fi.files[0]?.name?.replace(/\.pdf$/i,'')||'tables')+'-extracted.xlsx';
@@ -1655,9 +1679,12 @@
       setTimeout(()=>prog(0,false),800);
       
     } catch(err){
-      console.error(err); 
-      st(err.message||'Something went wrong during analysis.','error');
-      toast(err.message||'Analysis failed. Please try again.','r'); 
+      console.error(err);
+      const msg = err.name==='AbortError'
+        ? 'Request timed out. The PDF may be too large or complex — try a smaller file.'
+        : (err.message||'Something went wrong during analysis.');
+      st(msg,'error');
+      toast(msg,'r');
       prog(0,false);
     } finally {
       abtn.disabled=false;
