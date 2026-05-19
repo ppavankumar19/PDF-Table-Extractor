@@ -1385,6 +1385,12 @@
     const f=fi.files[0];
     if(!f) return;
 
+    if(f.type && f.type !== 'application/pdf' && f.type !== 'application/x-pdf') {
+      toast('Please select a PDF file only.', 'r');
+      fi.value = '';
+      return;
+    }
+
     if(f.size > 50 * 1024 * 1024) {
       toast('File exceeds 50 MB. Please use a smaller PDF.', 'r');
       fi.value = '';
@@ -1414,19 +1420,20 @@
   }
   
   function clearFile() {
-    fi.value=''; 
+    fi.value='';
     dzT.textContent='Drop your PDF here or click to browse';
-    frow.classList.remove('show'); 
-    pthumb.style.display='none'; 
+    frow.classList.remove('show');
+    pthumb.style.display='none';
     pembd.removeAttribute('src');
     helperBox.style.display='none';
-    st('Ready to extract tables from your PDF','idle'); 
-    prog(0,false); 
-    setStep(1); 
+    st('Ready to extract tables from your PDF','idle');
+    prog(0,false);
+    setStep(1);
     resetPrev();
-    dlbtn.disabled=true; 
-    csvb.style.display='none'; 
-    fsb.style.display='none'; 
+    dlbtn.disabled=true;
+    csvb.style.display='none';
+    fsb.style.display='none';
+    if(blobUrl){ URL.revokeObjectURL(blobUrl); }
     blobUrl=null;
   }
   
@@ -1442,9 +1449,9 @@
   }));
   
   dz.addEventListener('drop',ev=>{
-    const f=ev.dataTransfer?.files?.[0]; 
+    const f=ev.dataTransfer?.files?.[0];
     if(!f) return;
-    if(f.type!=='application/pdf'){
+    if(f.type && f.type!=='application/pdf' && f.type!=='application/x-pdf'){
       toast('Please drop a PDF file only.','r');
       return;
     }
@@ -1601,10 +1608,11 @@
     
     abtn.disabled=true;
     abtn.innerHTML=`<span class="spin"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></span>Analyzing tables…`;
-    st('Analyzing PDF structure and extracting tables…','loading'); 
-    prog(20,true); 
-    setStep(2); 
-    resetPrev(); 
+    st('Analyzing PDF structure and extracting tables…','loading');
+    prog(20,true);
+    setStep(2);
+    resetPrev();
+    if(blobUrl){ URL.revokeObjectURL(blobUrl); blobUrl=null; }
     dlbtn.disabled=true;
     
     const fd=new FormData(form);
