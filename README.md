@@ -124,7 +124,7 @@ curl -X POST https://pdf-table-extractor-3hfa.onrender.com/extract \
 ## Quickstart
 
 ```bash
-git clone <your-repo-url> pdf-table-extractor
+git clone https://github.com/ppavankumar19/PDF-Table-Extractor.git pdf-table-extractor
 cd pdf-table-extractor
 python3 -m venv .venv
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
