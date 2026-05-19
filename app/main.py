@@ -520,7 +520,7 @@ async def index_head():
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 def _is_pdf(content_type: Optional[str]) -> bool:
