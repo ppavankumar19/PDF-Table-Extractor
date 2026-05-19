@@ -67,7 +67,7 @@ def _sanitize_filename(filename: Optional[str]) -> str:
     if not filename:
         return "tables"
     stem = Path(filename).stem
-    safe = "".join(ch for ch in stem if ch.isalnum() or ch in {"-", "_"})
+    safe = "".join(ch for ch in stem if (ch.isascii() and ch.isalnum()) or ch in {"-", "_"})
     return (safe or "tables")[:60]
 
 
@@ -233,7 +233,7 @@ def _map_highlights(table, page) -> List[List[Optional[str]]]:
 def _page_has_text(page) -> bool:
     """Quickly determine if the PDF page already contains extractable text."""
     try:
-        return bool(getattr(page, "chars", []) or getattr(page, "objects", {}).get("chars"))
+        return bool(page.chars)
     except Exception:
         return False
 
@@ -564,7 +564,7 @@ async def extract_tables(file: UploadFile = File(...)):
         pdf_bytes, table_settings=DEFAULT_TABLE_SETTINGS
     )
     filename = _sanitize_filename(file.filename)
-    disposition = f"attachment; filename={filename}-tables.xlsx"
+    disposition = f'attachment; filename="{filename}-tables.xlsx"'
 
     headers = {
         "Content-Disposition": disposition,
