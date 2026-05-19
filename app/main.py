@@ -533,7 +533,12 @@ async def analyze_tables(file: UploadFile = File(...)):
     if len(pdf_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File exceeds the 50 MB size limit.")
     _ensure_pdf_bytes(pdf_bytes)
-    tables = parse_pdf_tables(pdf_bytes, table_settings=DEFAULT_TABLE_SETTINGS)
+    try:
+        tables = parse_pdf_tables(pdf_bytes, table_settings=DEFAULT_TABLE_SETTINGS)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to parse PDF: {exc}")
     response = {
         "table_count": len(tables),
         "ocr_available": _HAS_TESSERACT,
