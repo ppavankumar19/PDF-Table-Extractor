@@ -2,8 +2,6 @@
 
 Convert tabular data inside PDFs into an Excel workbook where every detected table gets its own sheet. The single-page UI provides a guided 4-step flow with inline PDF preview, live workbook preview, and keyboard shortcuts.
 
-**Live deployment:** https://pdf-table-extractor-3hfa.onrender.com/
-
 ---
 
 ## Features
@@ -68,6 +66,30 @@ Browser (index.html)
 
 ---
 
+## Quickstart
+
+```bash
+git clone https://github.com/ppavankumar19/PDF-Table-Extractor.git pdf-table-extractor
+cd pdf-table-extractor
+python3 -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+Open **http://localhost:8000** — the UI is fully self-contained (no separate static file server needed).
+
+To stop the server: `Ctrl+C`
+
+**Next time** (venv already created):
+```bash
+cd pdf-table-extractor
+source .venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+```
+
+---
+
 ## API Reference
 
 ### `POST /analyze`
@@ -95,7 +117,7 @@ Returns a JSON preview of all detected tables — used by the UI to render the w
 - `ocr_available` indicates whether the server has Tesseract installed for scanned PDFs.
 
 ```bash
-curl -X POST https://pdf-table-extractor-3hfa.onrender.com/analyze \
+curl -X POST http://localhost:8000/analyze \
   -F "file=@sample.pdf" | jq .
 ```
 
@@ -110,38 +132,21 @@ Streams an Excel workbook (`.xlsx`) built from all detected tables.
 **Response:** Binary `.xlsx` file
 
 **Response headers:**
-- `Content-Disposition: attachment; filename=<name>-tables.xlsx`
+- `Content-Disposition: attachment; filename="<name>-tables.xlsx"`
 - `X-Table-Count: <number>`
 
 ```bash
-curl -X POST https://pdf-table-extractor-3hfa.onrender.com/extract \
+curl -X POST http://localhost:8000/extract \
   -F "file=@sample.pdf" \
   -o tables.xlsx -D -
 ```
 
 ---
 
-## Quickstart
-
-```bash
-git clone https://github.com/ppavankumar19/PDF-Table-Extractor.git pdf-table-extractor
-cd pdf-table-extractor
-python3 -m venv .venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Open http://localhost:8000 — the UI is fully self-contained (no separate static file server needed).
-
-To stop the server: `Ctrl+C`
-
----
-
 ## Requirements
 
-- Python 3.10+ (3.8+ should also work)
-- Dependencies in `requirements.txt` (FastAPI, pdfplumber, openpyxl, Pillow, pytesseract)
+- Python 3.10+
+- Dependencies in `requirements.txt` (FastAPI, Starlette, pdfplumber, openpyxl, Pillow, pytesseract)
 - **Optional:** Tesseract binary for OCR on scanned PDFs
 
 ---
@@ -171,6 +176,8 @@ pdf-table-extractor/
 │   └── index.html       # Single-page UI — HTML, CSS, JavaScript
 ├── tests/
 │   └── test_extract.py  # Regression tests (auto-skips OCR if Tesseract missing)
+├── Procfile             # Deployment start command (Render / Heroku)
+├── render.yaml          # Render deployment configuration
 └── requirements.txt
 ```
 
@@ -189,28 +196,27 @@ DEFAULT_TABLE_SETTINGS = {
 }
 ```
 
-You can also pass custom settings directly to `extract_tables_to_workbook(pdf_bytes, table_settings={...})`.
-
 ---
 
 ## Testing
 
 ```bash
-.venv/bin/pytest           # OCR test auto-skips if Tesseract is absent
+source .venv/bin/activate
+pytest tests/ -v          # OCR test auto-skips if Tesseract is absent
 ```
 
 ---
 
 ## Deployment
 
-**Render (current):** The app is deployed at https://pdf-table-extractor-3hfa.onrender.com/
+The project includes `render.yaml` and `Procfile` for one-click deployment on Render, Heroku, or Railway.
 
 **Self-hosted production:**
 ```bash
 uvicorn app.main:app --workers 4 --host 0.0.0.0 --port 8000
 ```
 
-Run behind a reverse proxy (Nginx, Caddy) for TLS and additional rate limiting. The 50 MB upload limit is enforced in application code; you may also set it at the proxy level.
+Run behind a reverse proxy (Nginx, Caddy) for TLS and rate limiting. The 50 MB upload limit is enforced in application code; you may also set it at the proxy level.
 
 ---
 
@@ -223,6 +229,7 @@ Run behind a reverse proxy (Nginx, Caddy) for TLS and additional rate limiting. 
 | Highlights missing | Only rectangles and highlight annotations are mapped. Very subtle colors (low saturation/brightness) are filtered out by design. |
 | `no-tables-found` sheet in Excel | The PDF has no line-drawn tables on any page. Install Tesseract for OCR fallback on scanned PDFs. |
 | Large PDF times out | The client enforces a 90 s timeout for analysis and 150 s for Excel generation. Reduce PDF size or increase server resources. |
+| `TypeError: unhashable type: 'dict'` on startup | Starlette 1.0+ changed the `TemplateResponse` API. Ensure you are using the latest code from this repo. |
 
 ---
 
