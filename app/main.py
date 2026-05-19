@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from io import BytesIO
 import statistics
@@ -510,6 +510,12 @@ def extract_tables_to_workbook(
         return output_stream, sheet_count
     except Exception as exc:  # pdf could be corrupted or unsupported
         raise HTTPException(status_code=400, detail=f"Failed to parse PDF: {exc}")
+
+
+@app.head("/", status_code=200)
+async def index_head():
+    """Health-check endpoint for Render and other platforms that probe with HEAD /."""
+    return Response()
 
 
 @app.get("/", response_class=HTMLResponse)
