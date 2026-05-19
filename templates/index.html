@@ -1403,6 +1403,7 @@
     fname.textContent=f.name;
     fsize.textContent=`${sizeMB} MB`;
     frow.classList.add('show');
+    if(pembd.src && pembd.src.startsWith('blob:')){ URL.revokeObjectURL(pembd.src); }
     pembd.src=URL.createObjectURL(f);
     pthumb.style.display='block';
     helperBox.style.display='flex';
@@ -1424,6 +1425,7 @@
     dzT.textContent='Drop your PDF here or click to browse';
     frow.classList.remove('show');
     pthumb.style.display='none';
+    if(pembd.src && pembd.src.startsWith('blob:')){ URL.revokeObjectURL(pembd.src); }
     pembd.removeAttribute('src');
     helperBox.style.display='none';
     st('Ready to extract tables from your PDF','idle');
